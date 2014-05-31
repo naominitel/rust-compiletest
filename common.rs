@@ -1,4 +1,4 @@
-// Copyright 2012-2013 The Rust Project Developers. See the COPYRIGHT
+// Copyright 2012-2014 The Rust Project Developers. See the COPYRIGHT
 // file at the top-level directory of this distribution and at
 // http://rust-lang.org/COPYRIGHT.
 //
@@ -8,23 +8,58 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#[deriving(Clone, Eq)]
-pub enum mode {
-    mode_compile_fail,
-    mode_run_fail,
-    mode_run_pass,
-    mode_pretty,
-    mode_debug_info,
-    mode_codegen
+use std::from_str::FromStr;
+use std::fmt;
+use regex::Regex;
+
+#[deriving(Clone, PartialEq)]
+pub enum Mode {
+    CompileFail,
+    RunFail,
+    RunPass,
+    Pretty,
+    DebugInfoGdb,
+    DebugInfoLldb,
+    Codegen
+}
+
+impl FromStr for Mode {
+    fn from_str(s: &str) -> Option<Mode> {
+        match s {
+          "compile-fail" => Some(CompileFail),
+          "run-fail" => Some(RunFail),
+          "run-pass" => Some(RunPass),
+          "pretty" => Some(Pretty),
+          "debuginfo-lldb" => Some(DebugInfoLldb),
+          "debuginfo-gdb" => Some(DebugInfoGdb),
+          "codegen" => Some(Codegen),
+          _ => None,
+        }
+    }
+}
+
+impl fmt::Show for Mode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let msg = match *self {
+            CompileFail => "compile-fail",
+            RunFail => "run-fail",
+            RunPass => "run-pass",
+            Pretty => "pretty",
+            DebugInfoGdb => "debuginfo-gdb",
+            DebugInfoLldb => "debuginfo-lldb",
+            Codegen => "codegen",
+        };
+        msg.fmt(f)
+    }
 }
 
 #[deriving(Clone)]
-pub struct config {
+pub struct Config {
     // The library paths required for running the compiler
-    pub compile_lib_path: ~str,
+    pub compile_lib_path: String,
 
     // The library paths required for running compiled programs
-    pub run_lib_path: ~str,
+    pub run_lib_path: String,
 
     // The rustc executable
     pub rustc_path: Path,
@@ -45,16 +80,19 @@ pub struct config {
     pub aux_base: Path,
 
     // The name of the stage being built (stage1, etc)
-    pub stage_id: ~str,
+    pub stage_id: String,
 
     // The test mode, compile-fail, run-fail, run-pass
-    pub mode: mode,
+    pub mode: Mode,
 
     // Run ignored tests
     pub run_ignored: bool,
 
     // Only run tests that match this filter
-    pub filter: Option<~str>,
+    pub filter: Option<Regex>,
+
+    // Precompiled regex for finding expected errors in cfail
+    pub cfail_regex: Regex,
 
     // Write out a parseable log of tests that were run
     pub logfile: Option<Path>,
@@ -75,33 +113,38 @@ pub struct config {
 
     // A command line to prefix program execution with,
     // for running under valgrind
-    pub runtool: Option<~str>,
+    pub runtool: Option<String>,
 
     // Flags to pass to the compiler when building for the host
-    pub host_rustcflags: Option<~str>,
+    pub host_rustcflags: Option<String>,
 
     // Flags to pass to the compiler when building for the target
-    pub target_rustcflags: Option<~str>,
+    pub target_rustcflags: Option<String>,
 
     // Run tests using the JIT
     pub jit: bool,
 
     // Target system to be tested
-    pub target: ~str,
+    pub target: String,
 
     // Host triple for the compiler being invoked
-    pub host: ~str,
+    pub host: String,
+
+    // Path to the android tools
+    pub android_cross_path: Path,
 
     // Extra parameter to run adb on arm-linux-androideabi
-    pub adb_path: ~str,
+    pub adb_path: String,
 
     // Extra parameter to run test sute on arm-linux-androideabi
-    pub adb_test_dir: ~str,
+    pub adb_test_dir: String,
 
     // status whether android device available or not
     pub adb_device_status: bool,
 
+    // the path containing LLDB's Python module
+    pub lldb_python_dir: Option<String>,
+
     // Explain what's going on
     pub verbose: bool
-
 }

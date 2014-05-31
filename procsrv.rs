@@ -10,82 +10,57 @@
 
 use std::os;
 use std::str;
-use std::io::process::{ProcessExit, Process, ProcessConfig, ProcessOutput};
+use std::io::process::{ProcessExit, Command, Process, ProcessOutput};
+use std::unstable::dynamic_lib::DynamicLibrary;
 
-#[cfg(target_os = "win32")]
-fn target_env(lib_path: &str, prog: &str) -> Vec<(~str, ~str)> {
-    let env = os::env();
+fn target_env(lib_path: &str, prog: &str) -> Vec<(String, String)> {
+    let prog = if cfg!(windows) {prog.slice_to(prog.len() - 4)} else {prog};
+    let mut aux_path = prog.to_string();
+    aux_path.push_str(".libaux");
 
-    // Make sure we include the aux directory in the path
-    assert!(prog.ends_with(".exe"));
-    let aux_path = prog.slice(0u, prog.len() - 4u).to_owned() + ".libaux";
+    // Need to be sure to put both the lib_path and the aux path in the dylib
+    // search path for the child.
+    let mut path = DynamicLibrary::search_path();
+    path.insert(0, Path::new(aux_path));
+    path.insert(0, Path::new(lib_path));
 
-    let mut new_env: Vec<_> = env.move_iter().map(|(k, v)| {
-        let new_v = if "PATH" == k {
-            format!("{};{};{}", v, lib_path, aux_path)
-        } else {
-            v
-        };
-        (k, new_v)
-    }).collect();
-    if prog.ends_with("rustc.exe") {
-        new_env.push((~"RUST_THREADS", ~"1"));
+    // Remove the previous dylib search path var
+    let var = DynamicLibrary::envvar();
+    let mut env: Vec<(String,String)> =
+        os::env().move_iter().map(|(a,b)|(a.to_string(), b.to_string())).collect();
+    match env.iter().position(|&(ref k, _)| k.as_slice() == var) {
+        Some(i) => { env.remove(i); }
+        None => {}
     }
-    return new_env;
-}
 
-#[cfg(target_os = "linux")]
-#[cfg(target_os = "macos")]
-#[cfg(target_os = "freebsd")]
-fn target_env(lib_path: &str, prog: &str) -> Vec<(~str,~str)> {
-    // Make sure we include the aux directory in the path
-    let aux_path = prog + ".libaux";
-
-    let mut env: Vec<(~str,~str)> = os::env().move_iter().collect();
-    let var = if cfg!(target_os = "macos") {
-        "DYLD_LIBRARY_PATH"
-    } else {
-        "LD_LIBRARY_PATH"
-    };
-    let prev = match env.iter().position(|&(ref k, _)| k.as_slice() == var) {
-        Some(i) => env.remove(i).unwrap().val1(),
-        None => ~"",
-    };
-    env.push((var.to_owned(), if prev.is_empty() {
-        lib_path + ":" + aux_path
-    } else {
-        lib_path + ":" + aux_path + ":" + prev
-    }));
+    // Add the new dylib search path var
+    let newpath = DynamicLibrary::create_path(path.as_slice());
+    env.push((var.to_string(),
+              str::from_utf8(newpath.as_slice()).unwrap().to_string()));
     return env;
 }
 
-pub struct Result {pub status: ProcessExit, pub out: ~str, pub err: ~str}
+pub struct Result {pub status: ProcessExit, pub out: String, pub err: String}
 
 pub fn run(lib_path: &str,
            prog: &str,
-           args: &[~str],
-           env: Vec<(~str, ~str)> ,
-           input: Option<~str>) -> Option<Result> {
+           args: &[String],
+           env: Vec<(String, String)> ,
+           input: Option<String>) -> Option<Result> {
 
     let env = env.clone().append(target_env(lib_path, prog).as_slice());
-    let mut opt_process = Process::configure(ProcessConfig {
-        program: prog,
-        args: args,
-        env: Some(env.as_slice()),
-        .. ProcessConfig::new()
-    });
-
-    match opt_process {
-        Ok(ref mut process) => {
+    match Command::new(prog).args(args).env(env.as_slice()).spawn() {
+        Ok(mut process) => {
             for input in input.iter() {
                 process.stdin.get_mut_ref().write(input.as_bytes()).unwrap();
             }
-            let ProcessOutput { status, output, error } = process.wait_with_output();
+            let ProcessOutput { status, output, error } =
+                process.wait_with_output().unwrap();
 
             Some(Result {
                 status: status,
-                out: str::from_utf8_owned(output).unwrap(),
-                err: str::from_utf8_owned(error).unwrap()
+                out: str::from_utf8(output.as_slice()).unwrap().to_string(),
+                err: str::from_utf8(error.as_slice()).unwrap().to_string()
             })
         },
         Err(..) => None
@@ -94,19 +69,12 @@ pub fn run(lib_path: &str,
 
 pub fn run_background(lib_path: &str,
            prog: &str,
-           args: &[~str],
-           env: Vec<(~str, ~str)> ,
-           input: Option<~str>) -> Option<Process> {
+           args: &[String],
+           env: Vec<(String, String)> ,
+           input: Option<String>) -> Option<Process> {
 
     let env = env.clone().append(target_env(lib_path, prog).as_slice());
-    let opt_process = Process::configure(ProcessConfig {
-        program: prog,
-        args: args,
-        env: Some(env.as_slice()),
-        .. ProcessConfig::new()
-    });
-
-    match opt_process {
+    match Command::new(prog).args(args).env(env.as_slice()).spawn() {
         Ok(mut process) => {
             for input in input.iter() {
                 process.stdin.get_mut_ref().write(input.as_bytes()).unwrap();

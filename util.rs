@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use common::config;
+use common::Config;
 
 #[cfg(target_os = "win32")]
 use std::os::getenv;
@@ -33,25 +33,25 @@ pub fn get_os(triple: &str) -> &'static str {
 }
 
 #[cfg(target_os = "win32")]
-pub fn make_new_path(path: &str) -> ~str {
+pub fn make_new_path(path: &str) -> String {
 
     // Windows just uses PATH as the library search path, so we have to
     // maintain the current value while adding our own
-    match getenv(lib_path_env_var()) {
+    match getenv(lib_path_env_var().as_slice()) {
       Some(curr) => {
         format!("{}{}{}", path, path_div(), curr)
       }
-      None => path.to_str()
+      None => path.to_str().to_string()
     }
 }
 
 #[cfg(target_os = "win32")]
-pub fn lib_path_env_var() -> ~str { ~"PATH" }
+pub fn lib_path_env_var() -> String { "PATH".to_string() }
 
 #[cfg(target_os = "win32")]
-pub fn path_div() -> ~str { ~";" }
+pub fn path_div() -> String { ";".to_string() }
 
-pub fn logv(config: &config, s: ~str) {
+pub fn logv(config: &Config, s: String) {
     debug!("{}", s);
     if config.verbose { println!("{}", s); }
 }
